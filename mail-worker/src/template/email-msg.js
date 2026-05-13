@@ -1,64 +1,45 @@
 import emailUtils from '../utils/email-utils';
 
-const TELEGRAM_MESSAGE_LIMIT = 3500;
-const TRUNCATED_SUFFIX = '...';
-
-function escapeHtml(text = '') {
-	return text
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;');
-}
-
-function truncateText(text, maxLength) {
-	if (!text || text.length <= maxLength) {
-		return text || '';
-	}
-
-	if (maxLength <= TRUNCATED_SUFFIX.length) {
-		return TRUNCATED_SUFFIX.slice(0, maxLength);
-	}
-
-	return text.slice(0, maxLength - TRUNCATED_SUFFIX.length) + TRUNCATED_SUFFIX;
-}
-
 export default function emailMsgTemplate(email, tgMsgTo, tgMsgFrom, tgMsgText) {
 
-	let template = `<b>${escapeHtml(email.subject || '')}</b>`
+    let template = `<b>${email.subject}</b>`
 
-		if (tgMsgFrom === 'only-name') {
-			template += `
+    if (tgMsgFrom === 'only-name') {
+        template += `\n\nFrom\u200B：${email.name}`
+    }
 
-From\u200B：${escapeHtml(email.name || '')}`
-		}
+    if (tgMsgFrom === 'show') {
+        template += `\n\nFrom\u200B：${email.name}  &lt;${email.sendEmail}&gt;`
+    }
 
-		if (tgMsgFrom === 'show') {
-			template += `
+    if (tgMsgTo === 'show' && tgMsgFrom === 'hide') {
+        template += `\n\nTo：\u200B${email.toEmail}`
+    } else if (tgMsgTo === 'show') {
+        template += `\nTo：\u200B${email.toEmail}`
+    }
 
-From\u200B：${escapeHtml(email.name || '')}  &lt;${escapeHtml(email.sendEmail || '')}&gt;`
-		}
+    if (tgMsgText === 'show') {
+        // 1. 获取原始文本并进行基础清洗
+        let cleanedText = (emailUtils.formatText(email.text) || emailUtils.htmlToText(email.content)) || "";
 
-		if(tgMsgTo === 'show' && tgMsgFrom === 'hide') {
-			template += `
+        // 2. 正则过滤：删除图片占位符、删除所有链接、删除残留尖括号
+        cleanedText = cleanedText
+            .replace(/\[image:.*?\]/g, "")    // 剔除 [image: xxx]
+            .replace(/https?:\/\/[^\s]+/g, "") // 剔除 http/https 链接
+            .replace(/[<>]/g, "")             // 剔除 < 和 > 防止解析错误
+            .trim();
 
-To：\u200B${escapeHtml(email.toEmail || '')}`
+        // 3. 长度截断与动态折叠判断
+        const finalText = cleanedText.substring(0, 3800);
 
-		} else if(tgMsgTo === 'show') {
-		template += `
-To：\u200B${escapeHtml(email.toEmail || '')}`
-	}
+        if (finalText.length > 300) {
+            // 长文本：套用可折叠引用
+            template += `\n\n<blockquote expandable>${finalText}</blockquote>`;
+        } else {
+            // 中短文本：直接平铺展示
+            template += `\n\n${finalText}`;
+        }
+    }
 
-	const text = escapeHtml(emailUtils.formatText(email.text) || emailUtils.htmlToText(email.content));
-
-	if(tgMsgText === 'show') {
-		const prefix = `${template}
-
-`;
-		const maxTextLength = Math.max(0, TELEGRAM_MESSAGE_LIMIT - prefix.length);
-		template += `
-
-${truncateText(text, maxTextLength)}`
-	}
-
-	return template;
-
+    return template;
 }
